@@ -19,6 +19,8 @@ confused on errors.
 
 ## Live viewer
 
+**▶ Open: <https://hulryung.github.io/claude-code-unoq-indicator/viewer/>**
+
 [`viewer/index.html`](viewer/index.html) is a self-contained HTML page that
 renders the matrix in your browser using the same sprite data and animation
 logic as the MCU sketch. Three modes:
@@ -37,6 +39,9 @@ open viewer/index.html
 
 The board's HTTP server sends `Access-Control-Allow-Origin: *`, so the
 mirror and push modes work from a local `file://` URL without proxies.
+The hosted GitHub Pages URL is HTTPS, so mixed-content rules block the
+HTTP board calls — open the local file (`open viewer/index.html`) when
+you want the mirror/push modes against a LAN board.
 
 ## Architecture
 
