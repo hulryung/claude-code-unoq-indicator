@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>UNO Q LED matrix — Claude Code indicator</title>
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --panel: #161618;
+    --led-off: #1c1d20;
+    --led-on: #d97757;
+    --led-glow: rgba(217, 119, 87, 0.7);
+    --text: #e7e7ea;
+    --muted: #8a8a92;
+    --border: #28282c;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+                 "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 28px;
+  }
+  .matrix {
+    display: grid;
+    grid-template-columns: repeat(13, 1fr);
+    gap: 6px;
+    background: var(--panel);
+    padding: 18px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    aspect-ratio: 13 / 8;
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  .led {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--led-off);
+    transition: background-color 50ms linear, box-shadow 50ms linear;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 24px auto 0;
+    max-width: 640px;
+    justify-content: center;
+  }
+  button {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  button:hover { background: #1f1f23; border-color: #3a3a3f; }
+  button.active { background: var(--led-on); color: #1a0d08; border-color: var(--led-on); }
+  .mode-row {
+    display: flex;
+    gap: 8px;
+    margin: 20px auto 0;
+    max-width: 640px;
+    align-items: center;
+    color: var(--muted);
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .mode-row label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .mode-row input[type="text"] {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    width: 240px;
+  }
+  .status {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 16px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    min-height: 18px;
+  }
+  .legend {
+    margin-top: 28px;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .legend code {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>UNO Q LED matrix — Claude Code indicator</h1>
+  <div class="subtitle">
+    8 × 13 monochrome LED matrix, 3-bit grayscale.
+    Pure JS reimplementation of the MCU sketch.
+  </div>
+
+  <div class="matrix" id="matrix"></div>
+
+  <div class="controls" id="state-buttons"></div>
+
+  <div class="mode-row">
+    <label><input type="radio" name="mode" value="local" checked> Local sim</label>
+    <label><input type="radio" name="mode" value="poll"> Mirror live board</label>
+    <label><input type="radio" name="mode" value="push"> Push to board</label>
+    <input type="text" id="board-url" value="http://Janie.local:8765" />
+  </div>
+
+  <div class="status" id="status">local sim · idle</div>
+
+  <div class="legend">
+    LED on color: Anthropic orange (<code>#d97757</code>) ·
+    brightness levels 0…7 mapped to alpha + glow ·
+    50 ms render tick · same sprite data as <code>sketch.ino</code>.
+  </div>
+</div>
+
+<script>
+const ROWS = 8, COLS = 13;
+
+// === Sprites — must stay in sync with claude-anim/sketch/sketch.ino ===
+const BODY = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,7,7,7,7,7,7,7,7,7,0,0],
+  [0,0,7,7,0,5,5,5,0,7,7,0,0],
+  [7,7,7,5,5,5,5,5,5,5,7,7,7],
+  [0,7,5,5,5,5,5,5,5,5,5,7,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0],
+];
+const LEGS_STAND = [0,0,7,0,7,0,0,0,7,0,7,0,0];
+const LEGS_A     = [0,0,7,7,0,0,0,0,0,7,7,0,0];
+const LEGS_B     = [0,0,0,7,7,0,0,0,7,7,0,0,0];
+
+const SPINNER = [
+  [[0,0,0,0,0],[0,0,0,0,0],[0,0,7,0,0],[0,0,0,0,0],[0,0,0,0,0]],
+  [[0,0,0,0,0],[0,0,3,0,0],[0,3,7,3,0],[0,0,3,0,0],[0,0,0,0,0]],
+  [[0,0,0,0,0],[0,3,3,3,0],[0,3,7,3,0],[0,3,3,3,0],[0,0,0,0,0]],
+  [[3,0,3,0,3],[0,5,5,5,0],[3,5,7,5,3],[0,5,5,5,0],[3,0,3,0,3]],
+  [[0,0,7,0,0],[0,3,7,3,0],[7,7,7,7,7],[0,3,7,3,0],[0,0,7,0,0]],
+  [[0,3,7,3,0],[3,7,7,7,3],[7,7,7,7,7],[3,7,7,7,3],[0,3,7,3,0]],
+];
+
+const CELEBRATE = [
+  [7,0,0,0,0,0,0,0,0,0,0,0,7],
+  [0,7,0,7,7,7,7,7,7,7,0,7,0],
+  [0,7,7,7,7,0,5,0,7,7,7,7,0],
+  [0,0,7,5,5,5,5,5,5,5,7,0,0],
+  [0,0,0,5,5,5,5,5,5,5,0,0,0],
+  [0,0,0,7,0,7,0,7,0,7,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0],
+];
+
+const CONFUSED = [
+  [0,0,0,0,0,7,7,0,0,0,0,0,0],
+  [0,0,0,0,7,0,0,7,0,0,0,0,0],
+  [0,0,0,0,0,0,7,0,0,0,0,0,0],
+  [0,0,0,0,0,7,0,0,0,0,0,0,0],
+  [0,0,7,7,7,7,7,7,7,7,7,0,0],
+  [0,7,7,5,0,5,5,5,0,5,7,7,0],
+  [7,7,5,5,5,5,5,5,5,5,5,7,7],
+  [0,0,7,0,7,0,0,0,7,0,7,0,0],
+];
+
+// === Frame buffer + helpers ===
+const frame = new Uint8Array(ROWS * COLS);
+const ledEls = [];
+
+function buildMatrix() {
+  const matrix = document.getElementById('matrix');
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const led = document.createElement('div');
+      led.className = 'led';
+      matrix.appendChild(led);
+      ledEls.push(led);
+    }
+  }
+}
+
+function clearFrame() { frame.fill(0); }
+function fillAll(v) { frame.fill(v); }
+
+function scaleBrightness(v, scale256) {
+  const scaled = Math.floor(v * scale256 / 256);
+  return scaled > 7 ? 7 : scaled;
+}
+
+function triangle1000(now, periodMs) {
+  const t = now % periodMs;
+  const half = periodMs / 2;
+  let tri = t - half;
+  if (tri < 0) tri = -tri;
+  return Math.floor(1000 - (tri * 1000 / half));
+}
+
+function drawSprite(sprite, yShift, xShift, brightScale256) {
+  for (let r = 0; r < ROWS; r++) {
+    const fy = r + yShift;
+    if (fy < 0 || fy >= ROWS) continue;
+    for (let c = 0; c < COLS; c++) {
+      const fx = c + xShift;
+      if (fx < 0 || fx >= COLS) continue;
+      const v = sprite[r][c];
+      if (v === 0) continue;
+      const scaled = scaleBrightness(v, brightScale256);
+      const idx = fy * COLS + fx;
+      if (scaled > frame[idx]) frame[idx] = scaled;
+    }
+  }
+}
+
+function drawLegs(legs, row, xShift, brightScale256) {
+  if (row < 0 || row >= ROWS) return;
+  for (let c = 0; c < COLS; c++) {
+    const fx = c + xShift;
+    if (fx < 0 || fx >= COLS) continue;
+    const v = legs[c];
+    if (v === 0) continue;
+    const scaled = scaleBrightness(v, brightScale256);
+    const idx = row * COLS + fx;
+    if (scaled > frame[idx]) frame[idx] = scaled;
+  }
+}
+
+function drawSpinner5x5(idx, yTop, xLeft, brightScale256) {
+  const sprite = SPINNER[idx];
+  for (let r = 0; r < 5; r++) {
+    const fy = yTop + r;
+    if (fy < 0 || fy >= ROWS) continue;
+    for (let c = 0; c < 5; c++) {
+      const fx = xLeft + c;
+      if (fx < 0 || fx >= COLS) continue;
+      const v = sprite[r][c];
+      if (v === 0) continue;
+      const scaled = scaleBrightness(v, brightScale256);
+      const i = fy * COLS + fx;
+      if (scaled > frame[i]) frame[i] = scaled;
+    }
+  }
+}
+
+// === Renderers — mirror sketch.ino loop ===
+let currentState = 'idle';
+let stateEnteredAt = performance.now();
+
+function renderIdle(now) {
+  clearFrame();
+  const bright = 180 + Math.floor(triangle1000(now, 3000) * 76 / 1000);
+  drawSprite(BODY, 0, 0, bright);
+  drawLegs(LEGS_STAND, 5, 0, bright);
+}
+
+function renderThinking(now) {
+  clearFrame();
+  const idx = Math.floor(now / 120) % 6;
+  drawSpinner5x5(idx, 1, 4, 256);
+}
+
+function renderTool(now) {
+  clearFrame();
+  const stepA = (Math.floor(now / 100) & 1) === 0;
+  const yBob = stepA ? 0 : -1;
+  drawSprite(BODY, yBob, 0, 256);
+  drawLegs(stepA ? LEGS_A : LEGS_B, 5 + yBob, 0, 256);
+  if (Math.floor(now / 80) & 1) {
+    frame[3 * COLS + 0] = 7;
+    frame[3 * COLS + COLS - 1] = 7;
+  }
+}
+
+function renderDone(now) {
+  const age = now - stateEnteredAt;
+  clearFrame();
+  if (age < 700) {
+    const yBob = (Math.floor(age / 140) & 1) ? 0 : -1;
+    drawSprite(CELEBRATE, yBob, 0, 256);
+  } else if (age < 900) {
+    const b = 256 - Math.floor((age - 700) * 256 / 200);
+    drawSprite(CELEBRATE, 0, 0, b);
+  } else {
+    currentState = 'idle';
+    stateEnteredAt = now;
+    renderIdle(now);
+  }
+}
+
+function renderNotify(now) {
+  clearFrame();
+  const bright = 128 + Math.floor(triangle1000(now, 900) * 200 / 1000);
+  drawSprite(BODY, 0, 0, bright);
+  drawLegs(LEGS_STAND, 5, 0, bright);
+}
+
+function renderError(now) {
+  clearFrame();
+  const shake = (Math.floor(now / 200) & 1) ? 0 : 1;
+  const showQ = (Math.floor(now / 400) & 1) === 0;
+  if (showQ) {
+    drawSprite(CONFUSED, 0, shake, 256);
+  } else {
+    for (let r = 4; r < 8; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const fx = c + shake;
+        if (fx < 0 || fx >= COLS) continue;
+        const v = CONFUSED[r][c];
+        if (v === 0) continue;
+        if (v > frame[r * COLS + fx]) frame[r * COLS + fx] = v;
+      }
+    }
+  }
+}
+
+const RENDERERS = {
+  idle: renderIdle, thinking: renderThinking, tool: renderTool,
+  done: renderDone, notify: renderNotify, error: renderError,
+};
+
+function setState(name, fromUI) {
+  if (name === currentState) return;
+  currentState = name;
+  stateEnteredAt = performance.now();
+  updateButtons();
+  if (fromUI && getMode() === 'push') pushToBoard(name);
+}
+
+function paint() {
+  const now = performance.now();
+  const fn = RENDERERS[currentState] || renderIdle;
+  fn(now);
+  // Update DOM LEDs
+  for (let i = 0; i < ROWS * COLS; i++) {
+    const v = frame[i];
+    const el = ledEls[i];
+    if (v === 0) {
+      el.style.backgroundColor = '';
+      el.style.boxShadow = '';
+    } else {
+      const alpha = v / 7;
+      el.style.backgroundColor = `rgba(217, 119, 87, ${alpha})`;
+      el.style.boxShadow = `0 0 ${4 + v * 1.5}px rgba(217, 119, 87, ${alpha * 0.85})`;
+    }
+  }
+}
+
+// === UI ===
+const STATES = ['idle', 'thinking', 'tool', 'done', 'notify', 'error'];
+function buildButtons() {
+  const row = document.getElementById('state-buttons');
+  STATES.forEach(s => {
+    const b = document.createElement('button');
+    b.textContent = s;
+    b.dataset.state = s;
+    b.onclick = () => setState(s, true);
+    row.appendChild(b);
+  });
+}
+function updateButtons() {
+  document.querySelectorAll('#state-buttons button').forEach(b => {
+    b.classList.toggle('active', b.dataset.state === currentState);
+  });
+  updateStatus();
+}
+
+function getMode() {
+  return document.querySelector('input[name="mode"]:checked').value;
+}
+function getBoardUrl() {
+  return document.getElementById('board-url').value.replace(/\/$/, '');
+}
+function updateStatus() {
+  const mode = getMode();
+  document.getElementById('status').textContent = `${mode} · ${currentState}`;
+}
+
+async function pollBoard() {
+  if (getMode() !== 'poll') return;
+  try {
+    const r = await fetch(`${getBoardUrl()}/state`, { mode: 'cors' });
+    if (!r.ok) return;
+    const data = await r.json();
+    if (data.state && STATES.includes(data.state) && data.state !== currentState) {
+      currentState = data.state;
+      stateEnteredAt = performance.now();
+      updateButtons();
+    }
+  } catch (_) {
+    // ignore — board may be unreachable
+  }
+}
+
+async function pushToBoard(state) {
+  try {
+    await fetch(`${getBoardUrl()}/state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state }),
+      mode: 'cors',
+    });
+  } catch (_) {}
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  buildMatrix();
+  buildButtons();
+  setState('idle');
+  // animation loop
+  setInterval(paint, 20);
+  // poll the board every 500ms when in mirror mode
+  setInterval(pollBoard, 500);
+  // mode change updates status
+  document.querySelectorAll('input[name="mode"]').forEach(el => {
+    el.addEventListener('change', updateStatus);
+  });
+});
+</script>
+</body>
+</html>

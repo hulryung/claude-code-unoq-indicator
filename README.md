@@ -17,6 +17,27 @@ confused on errors.
 .................
 ```
 
+## Live viewer
+
+[`viewer/index.html`](viewer/index.html) is a self-contained HTML page that
+renders the matrix in your browser using the same sprite data and animation
+logic as the MCU sketch. Three modes:
+
+- **Local sim** — runs the animation entirely in JS, no board needed.
+- **Mirror live board** — polls `http://Janie.local:8765/state` and shows
+  what the physical LED matrix is showing right now.
+- **Push to board** — buttons send `POST /state` so you can drive the
+  board from the page.
+
+Just open the file in any browser:
+
+```bash
+open viewer/index.html
+```
+
+The board's HTTP server sends `Access-Control-Allow-Origin: *`, so the
+mirror and push modes work from a local `file://` URL without proxies.
+
 ## Architecture
 
 ```
@@ -157,6 +178,8 @@ the broken UI entirely.
 │   ├── unoq-state           # CLI: push a state to the board (fire-and-forget)
 │   ├── unoq-demo-loop       # cycle through all states forever
 │   └── unoq-demo-stop       # stop the demo loop
+├── viewer/
+│   └── index.html           # browser-side LED matrix viewer (local + live mirror)
 ├── claude-hooks.example.json # snippet to merge into ~/.claude/settings.json
 └── README.md
 ```
