@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {"hooks": [{"type": "command", "command": "$HOME/bin/unoq-state thinking"}]}
+    ],
+    "PreToolUse": [
+      {"hooks": [{"type": "command", "command": "$HOME/bin/unoq-state tool"}]}
+    ],
+    "PostToolUse": [
+      {"hooks": [{"type": "command", "command": "$HOME/bin/unoq-state thinking"}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "$HOME/bin/unoq-state done"}]}
+    ],
+    "Notification": [
+      {"hooks": [{"type": "command", "command": "$HOME/bin/unoq-state notify"}]}
+    ],
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "$HOME/bin/unoq-state idle"}]}
+    ]
+  }
+}

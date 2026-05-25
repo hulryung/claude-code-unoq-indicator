@@ -1,0 +1,6 @@
+name: Claude Code Anim
+description: LED matrix status indicator for Claude Code. Push states via POST http://Janie.local:8765/state {"state":"thinking|tool|idle|done|notify|error"}.
+ports:
+  - 8765
+bricks: []
+icon: ✨

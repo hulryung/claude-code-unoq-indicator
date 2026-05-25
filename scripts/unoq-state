@@ -1,0 +1,13 @@
+#!/bin/bash
+# Push Claude Code lifecycle state to Arduino UNO Q LED matrix.
+# Designed for ~/.claude/settings.json hooks — fast, silent, never blocks.
+#
+# Usage: unoq-state <idle|thinking|tool|done|notify|error>
+state="${1:-idle}"
+url="${UNOQ_URL:-http://Janie.local:8765/state}"
+curl -s --max-time 1 --connect-timeout 0.5 \
+    -X POST -H 'Content-Type: application/json' \
+    -d "{\"state\":\"$state\"}" \
+    "$url" >/dev/null 2>&1 &
+disown 2>/dev/null
+exit 0

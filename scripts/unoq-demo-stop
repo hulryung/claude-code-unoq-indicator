@@ -1,0 +1,10 @@
+#!/bin/bash
+if [ -f /tmp/unoq-demo.pid ]; then
+    pid=$(cat /tmp/unoq-demo.pid)
+    kill $pid 2>/dev/null && echo "demo loop stopped (pid $pid)" || echo "process gone"
+    rm -f /tmp/unoq-demo.pid
+    curl -s --max-time 1 -X POST -H 'Content-Type: application/json' \
+         -d '{"state":"idle"}' http://Janie.local:8765/state >/dev/null
+else
+    echo "no demo running"
+fi
